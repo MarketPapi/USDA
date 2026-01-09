@@ -6,13 +6,39 @@ st.set_page_config(layout="wide")
 st.title("Country Balance Sheet")
 
 @st.cache_data
-def load_data():
-    df = pd.read_parquet("data/latest.parquet")
-    df["ProductType"] = df["CommodityDescription"].astype(str).str.split(",").str[0].str.strip()
-    df["MarketYear"] = df["MarketYear"].astype(int)
-    return df
+def load_data() -> pd.DataFrame:
+    """Load and preprocess USDA data."""
+    try:
+        df = pd.read_parquet("data/latest.parquet")
+        # Ensure string columns are properly typed and stripped
+        df["CommodityDescription"] = df["CommodityDescription"].astype(str).str.strip()
+        df["UnitDescription"] = df["UnitDescription"].astype(str).str.strip()
+        df["ProductType"] = df["CommodityDescription"].str.split(",").str[0].str.strip()
+        df["MarketYear"] = df["MarketYear"].astype(int)
+        return df
+    except FileNotFoundError:
+        st.error("Data file not found. Please run main.py to generate data/latest.parquet")
+        st.stop()
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        st.stop()
 
-def top_n_with_others(df_in, name_col="CountryName", value_col="Value", n=10, others_label="Others"):
+def top_n_with_others(df_in: pd.DataFrame, name_col: str = "CountryName",
+                      value_col: str = "Value", n: int = 10,
+                      others_label: str = "Others") -> pd.DataFrame:
+    """
+    Get top N items by value, grouping the rest as 'Others'.
+    
+    :param df_in: Input DataFrame
+    :param name_col: Column name for grouping
+    :param value_col: Column name for values to sum
+    :param n: Number of top items to keep
+    :param others_label: Label for the 'Others' group
+    :return: DataFrame with top N items plus Others
+    """
+    if df_in.empty:
+        return df_in
+    
     df2 = df_in.groupby(name_col, as_index=False)[value_col].sum()
     df2 = df2.sort_values(value_col, ascending=False)
 
@@ -31,7 +57,14 @@ df = load_data()
 # ---------------- Filters ----------------
 c1, c2, c3 = st.columns(3)
 
-def default_index(options, preferred):
+def default_index(options: list, preferred: str) -> int:
+    """
+    Get index of preferred option, or 0 if not found.
+    
+    :param options: List of options
+    :param preferred: Preferred option value
+    :return: Index of preferred option or 0
+    """
     try:
         return options.index(preferred)
     except ValueError:
@@ -78,12 +111,12 @@ ROW_ORDER = [
     "Stock-to-Use (%)",
 ]
 
-# ---------------- Filtered data for BALANCE TABLE (selected country) ----------------
+# ---------------- Filtered data for BALANCE TABLE (selected country) ----------------  
 mask = (
     (df["CountryName"] == country) &
     (df["ProductType"] == ptype) &
     (df["CommodityDescription"] == product) &
-    (df["UnitDescription"].astype(str).str.contains(r"1000\s*MT", case=False, na=False))
+    (df["UnitDescription"].str.contains(r"1000\s*MT", case=False, na=False))
 )
 dff = df.loc[mask].copy()
 
@@ -163,7 +196,7 @@ rank_base = df[
     (df["ProductType"] == ptype) &
     (df["CommodityDescription"] == product) &
     (df["MarketYear"] == year) &
-    (df["UnitDescription"].astype(str).str.contains(r"1000\s*MT", case=False, na=False))
+    (df["UnitDescription"].str.contains(r"1000\s*MT", case=False, na=False))
 ].copy()
 
 # Add a synthetic "Domestic Consumption" series if needed
@@ -181,12 +214,24 @@ if "Domestic Consumption" not in set(rank_base["AttributeDescription"].unique())
             tmp["AttributeDescription"] = "Domestic Consumption"
             rank_base = pd.concat([rank_base, tmp], ignore_index=True)
 
-def get_top(attribute_name: str):
+def get_top(attribute_name: str) -> pd.DataFrame:
+    """
+    Get top countries for a specific attribute.
+    
+    :param attribute_name: Name of the attribute to rank by
+    :return: DataFrame with top N countries plus Others
+    """
     tmp = rank_base[rank_base["AttributeDescription"] == attribute_name]
     out = tmp.groupby("CountryName", as_index=False)["Value"].sum()
     return top_n_with_others(out, n=top_n)
 
-def draw_bar(df_top, title):
+def draw_bar(df_top: pd.DataFrame, title: str) -> None:
+    """
+    Draw a bar chart from the top countries DataFrame.
+    
+    :param df_top: DataFrame with CountryName and Value columns
+    :param title: Chart title
+    """
     if df_top.empty:
         st.info(f"No data for {title}.")
         return

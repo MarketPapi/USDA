@@ -1,10 +1,8 @@
-import os
 import pandas as pd
 import requests
-from typing import List, Any
+from typing import Any, Optional
 from data_consts import Constants
 import warnings
-import streamlit as st
 
 # Ignore warnings
 warnings.filterwarnings('ignore')
@@ -28,95 +26,146 @@ class USDADataHandler:
         self.agg_list = Constants.AGG_LIST
 
     @staticmethod
-    def fetch_commodity_codes():
+    def fetch_commodity_codes() -> Optional[pd.DataFrame]:
+        """Fetch commodity codes from USDA API."""
         url = "https://api.fas.usda.gov/api/psd/commodities"
         headers = {"Accept": "application/json", "X-Api-Key": Constants.API_KEY}
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
+        try:
+            response = requests.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
             return pd.DataFrame(response.json())
-        else:
-            print(f"Failed to fetch data for commodity codes")
+        except (requests.RequestException, ValueError) as e:
+            print(f"Failed to fetch commodity codes: {e}")
             return None
 
     @staticmethod
-    def fetch_country_codes():
-        url="https://api.fas.usda.gov/api/psd/countries"
+    def fetch_country_codes() -> Optional[pd.DataFrame]:
+        """Fetch country codes from USDA API."""
+        url = "https://api.fas.usda.gov/api/psd/countries"
         headers = {"Accept": "application/json", "X-Api-Key": Constants.API_KEY}
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
+        try:
+            response = requests.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
             return pd.DataFrame(response.json())
-        else:
-            print(f"Failed to fetch data for country codes")
+        except (requests.RequestException, ValueError) as e:
+            print(f"Failed to fetch country codes: {e}")
             return None
 
     @staticmethod
-    def fetch_commodity_attributes():
+    def fetch_commodity_attributes() -> Optional[pd.DataFrame]:
+        """Fetch commodity attributes from USDA API."""
         url = "https://api.fas.usda.gov/api/psd/commodityAttributes"
         headers = {"Accept": "application/json", "X-Api-Key": Constants.API_KEY}
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
+        try:
+            response = requests.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
             return pd.DataFrame(response.json())
-        else:
-            print(f"Failed to fetch data for commodity attributes")
+        except (requests.RequestException, ValueError) as e:
+            print(f"Failed to fetch commodity attributes: {e}")
             return None
 
     @staticmethod
-    def fetch_units_of_measure():
+    def fetch_units_of_measure() -> Optional[pd.DataFrame]:
+        """Fetch units of measure from USDA API."""
         url = "https://api.fas.usda.gov/api/psd/unitsOfMeasure"
         headers = {"Accept": "application/json", "X-Api-Key": Constants.API_KEY}
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
+        try:
+            response = requests.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
             return pd.DataFrame(response.json())
-        else:
-            print(f"Failed to fetch data for units of measure")
+        except (requests.RequestException, ValueError) as e:
+            print(f"Failed to fetch units of measure: {e}")
             return None
 
-    def fetch_USDA_data(self, commodity_code: int, market_year: int) -> Any | None:
+    def fetch_USDA_data(self, commodity_code: int, market_year: int) -> Optional[list]:
         """
-        Retrieves USDA PSD Data
+        Retrieves USDA PSD Data for a specific commodity and market year.
+        
         :param commodity_code: Integer, code for a specific commodity
         :param market_year: Integer, Marketing Year
-        :return: Res
+        :return: List of data records or None if request fails
         """
-        print("Fetching USDA Data...")
         url = f'https://api.fas.usda.gov/api/psd/commodity/{commodity_code}/country/all/year/{market_year}'
         headers = {"Accept": "application/json", "X-Api-Key": Constants.API_KEY}
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
+        try:
+            response = requests.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
             return response.json()
-        else:
-            print(f"Failed to fetch data for commodity code {commodity_code} and market year {market_year}")
+        except (requests.RequestException, ValueError) as e:
+            print(f"Failed to fetch data for commodity code {commodity_code} and market year {market_year}: {e}")
             return None
 
-    def clean_usda_data(self, raw_data: pd.DataFrame, country_codes:pd.DataFrame, commodity_codes:pd.DataFrame, commodity_attributes:pd.DataFrame, units_of_measure: pd.DataFrame) -> pd.DataFrame:
+    def clean_usda_data(self, raw_data: pd.DataFrame, country_codes: pd.DataFrame,
+                       commodity_codes: pd.DataFrame, commodity_attributes: pd.DataFrame,
+                       units_of_measure: pd.DataFrame) -> pd.DataFrame:
         """
-        Cleans the data retrieved from USDA servers
+        Cleans the data retrieved from USDA servers.
+        
         :param raw_data: pd.DataFrame, raw USDA data
-        :param min_market_year: int, minimum market year
-        :return: pd.Dataframe, Cleaned data
+        :param country_codes: pd.DataFrame, country code reference data
+        :param commodity_codes: pd.DataFrame, commodity code reference data
+        :param commodity_attributes: pd.DataFrame, attribute reference data
+        :param units_of_measure: pd.DataFrame, unit reference data
+        :return: pd.DataFrame, Cleaned data
         """
         print("Cleaning USDA data...")
 
+        if raw_data.empty:
+            return pd.DataFrame(columns=self.required_cols)
+
         # Merge in Commodity Description and Country Name
-        raw_data = raw_data.merge(country_codes[["countryCode","countryName"]], on="countryCode", how="left")
-        raw_data = raw_data.merge(commodity_codes.rename(columns={"commodityName": "CommodityDescription"}), on="commodityCode", how="left")
-        raw_data = raw_data.merge(commodity_attributes.rename(columns={"attributeName":"AttributeDescription"}), on="attributeId", how="left")
-        raw_data = raw_data.merge(units_of_measure.rename(columns={"unitDescription": "UnitDescription"}), on="unitId", how="left")
+        raw_data = raw_data.merge(
+            country_codes[["countryCode", "countryName"]], on="countryCode", how="left"
+        )
+        raw_data = raw_data.merge(
+            commodity_codes.rename(columns={"commodityName": "CommodityDescription"}),
+            on="commodityCode", how="left"
+        )
+        raw_data = raw_data.merge(
+            commodity_attributes.rename(columns={"attributeName": "AttributeDescription"}),
+            on="attributeId", how="left"
+        )
+        raw_data = raw_data.merge(
+            units_of_measure.rename(columns={"unitDescription": "UnitDescription"}),
+            on="unitId", how="left"
+        )
 
         # Rename Columns
-        raw_data.rename(columns={"commodityCode": "CommodityCode", "countryName": "CountryName",
-                                 "marketYear":"MarketYear", "calendarYear":"CalendarYear",
-                                 "month":"Month", "value":"Value"}, inplace=True)
+        raw_data.rename(columns={
+            "commodityCode": "CommodityCode",
+            "countryName": "CountryName",
+            "marketYear": "MarketYear",
+            "calendarYear": "CalendarYear",
+            "month": "Month",
+            "value": "Value"
+        }, inplace=True)
+
+        # Validate required columns exist
+        missing_cols = [col for col in self.required_cols if col not in raw_data.columns]
+        if missing_cols:
+            raise ValueError(f"Missing required columns: {missing_cols}")
 
         # Keep only necessary columns
-        clean_data = raw_data[self.required_cols]
+        clean_data = raw_data[self.required_cols].copy()
 
         # Assign types to columns
-        convert_dict = {'CommodityDescription': str, 'CountryName': str, 'MarketYear': int, 'CalendarYear': int,
-                        'Month': int, 'AttributeDescription': str, 'UnitDescription': str, 'Value': float}
+        convert_dict = {
+            'CommodityDescription': str,
+            'CountryName': str,
+            'MarketYear': int,
+            'CalendarYear': int,
+            'Month': int,
+            'AttributeDescription': str,
+            'UnitDescription': str,
+            'Value': float
+        }
         clean_data = clean_data.astype(convert_dict)
-        # Strip columns that contain strings
-        clean_data = clean_data.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
+
+        # Strip string columns (vectorized operation - more efficient than apply)
+        string_cols = clean_data.select_dtypes(include=['object']).columns
+        for col in string_cols:
+            clean_data[col] = clean_data[col].str.strip()
+
         # Filter commodities
         clean_data = clean_data[clean_data['CommodityDescription'].isin(self.required_comm_desc)]
         # Filter on Marketing Year
@@ -131,48 +180,84 @@ class USDADataHandler:
         """
         return clean_data.groupby(self.agg_list)['Value'].sum().reset_index()
 
-    def get_combined_data(self):
+    def get_combined_data(self) -> pd.DataFrame:
         """
-        Combines each USDA data request together
-        :return: pd.Dataframe
+        Combines each USDA data request together.
+        
+        :return: pd.DataFrame containing all fetched data
         """
         combined_data = []
+        total_requests = len(self.product_codes) * len(self.market_years)
+        completed = 0
+        
         # For each product code and each year, make a request, then combine it together
         for product_code in self.product_codes:
             for year in self.market_years:
                 data = self.fetch_USDA_data(product_code, year)
                 if data:
                     combined_data.extend(data)
-        print("Data Fetched Successfully")
+                completed += 1
+                if completed % 10 == 0:
+                    print(f"Progress: {completed}/{total_requests} requests completed")
+        
+        print(f"Data Fetched Successfully: {len(combined_data)} records")
         return pd.DataFrame(combined_data)
 
 
 
-def main():
-
+def main() -> pd.DataFrame:
     """
-    Runs the main script.
-
-    :return:
+    Runs the main script to fetch and process USDA data.
+    
+    :return: pd.DataFrame containing cleaned USDA data
+    :raises: ValueError if required reference data cannot be fetched or API key is missing
     """
-
+    # Validate API key is set
+    if not Constants.API_KEY:
+        raise ValueError(
+            "USDA_API_KEY environment variable is not set. "
+            "Please set it locally or configure it in GitHub Secrets for CI/CD.\n"
+            "Local setup: export USDA_API_KEY='your-key-here' (Linux/Mac) or "
+            "set USDA_API_KEY=your-key-here (Windows)"
+        )
+    
     data_handler = USDADataHandler()
-    combined_data = data_handler.get_combined_data()
+    
+    # Fetch reference data first
+    print("Fetching reference data...")
     comm_codes_df = data_handler.fetch_commodity_codes()
     country_codes_df = data_handler.fetch_country_codes()
     commodity_attributes_df = data_handler.fetch_commodity_attributes()
     units_of_measure_df = data_handler.fetch_units_of_measure()
-
-    clean_data = data_handler.clean_usda_data(raw_data=combined_data,
-                                              country_codes=country_codes_df,
-                                              commodity_codes=comm_codes_df,
-                                              commodity_attributes=commodity_attributes_df,
-                                              units_of_measure=units_of_measure_df)
-
+    
+    # Validate reference data
+    if any(df is None or df.empty for df in [comm_codes_df, country_codes_df,
+                                              commodity_attributes_df, units_of_measure_df]):
+        raise ValueError("Failed to fetch required reference data. Please check API connection and key.")
+    
+    # Fetch main data
+    combined_data = data_handler.get_combined_data()
+    
+    if combined_data.empty:
+        raise ValueError("No data was fetched from USDA API.")
+    
+    # Clean and process data
+    clean_data = data_handler.clean_usda_data(
+        raw_data=combined_data,
+        country_codes=country_codes_df,
+        commodity_codes=comm_codes_df,
+        commodity_attributes=commodity_attributes_df,
+        units_of_measure=units_of_measure_df
+    )
+    
     return clean_data
 
 
-
 if __name__ == "__main__":
-   df =  main()
-   df.to_parquet("data/latest.parquet", index=False, engine="pyarrow")
+    try:
+        df = main()
+        df.to_parquet("data/latest.parquet", index=False, engine="pyarrow")
+        print(f"Data saved successfully: {len(df)} records")
+    except Exception as e:
+        print(f"Error in main execution: {e}")
+        raise

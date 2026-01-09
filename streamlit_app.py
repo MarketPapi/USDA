@@ -9,13 +9,21 @@ st.title("USDA Dashboard — Overview")
 # ---------------- Load ----------------
 @st.cache_data
 def load_data() -> pd.DataFrame:
-    df = pd.read_parquet("data/latest.parquet", engine="pyarrow")
-    df["MarketYear"] = df["MarketYear"].astype(int)
+    """Load and preprocess USDA data from parquet file."""
+    try:
+        df = pd.read_parquet("data/latest.parquet", engine="pyarrow")
+        df["MarketYear"] = df["MarketYear"].astype(int)
 
-    for c in ["CommodityDescription", "AttributeDescription", "CountryName", "UnitDescription"]:
-        df[c] = df[c].astype(str).str.strip()
+        for c in ["CommodityDescription", "AttributeDescription", "CountryName", "UnitDescription"]:
+            df[c] = df[c].astype(str).str.strip()
 
-    return df
+        return df
+    except FileNotFoundError:
+        st.error("Data file not found. Please run main.py to generate data/latest.parquet")
+        st.stop()
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        st.stop()
 
 df = load_data()
 
@@ -35,7 +43,19 @@ def build_manual_world(df_in: pd.DataFrame) -> pd.DataFrame:
 WORLD = build_manual_world(df)
 
 # ---------------- Helpers ----------------
-def top_n_with_others(df_in: pd.DataFrame, name_col="CountryName", value_col="Value", n=10, others_label="Others"):
+def top_n_with_others(df_in: pd.DataFrame, name_col: str = "CountryName",
+                      value_col: str = "Value", n: int = 10,
+                      others_label: str = "Others") -> pd.DataFrame:
+    """
+    Get top N items by value, grouping the rest as 'Others'.
+    
+    :param df_in: Input DataFrame
+    :param name_col: Column name for grouping
+    :param value_col: Column name for values to sum
+    :param n: Number of top items to keep
+    :param others_label: Label for the 'Others' group
+    :return: DataFrame with top N items plus Others
+    """
     if df_in.empty:
         return df_in
     d = df_in.groupby(name_col, as_index=False)[value_col].sum().sort_values(value_col, ascending=False)
@@ -45,12 +65,25 @@ def top_n_with_others(df_in: pd.DataFrame, name_col="CountryName", value_col="Va
         top = pd.concat([top, pd.DataFrame({name_col: [others_label], value_col: [others_sum]})], ignore_index=True)
     return top
 
-def ensure_int_year_axis(fig):
+def ensure_int_year_axis(fig) -> object:
+    """
+    Ensure year axis displays as integers.
+    
+    :param fig: Plotly figure object
+    :return: Updated figure object
+    """
     fig.update_xaxes(tickmode="linear", dtick=1, tickformat="d")
     fig.update_layout(legend_title_text="")
     return fig
 
-def default_index(options, preferred):
+def default_index(options: list, preferred: str) -> int:
+    """
+    Get index of preferred option, or 0 if not found.
+    
+    :param options: List of options
+    :param preferred: Preferred option value
+    :return: Index of preferred option or 0
+    """
     try:
         return options.index(preferred)
     except ValueError:

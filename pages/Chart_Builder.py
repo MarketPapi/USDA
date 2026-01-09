@@ -9,16 +9,32 @@ st.title("Chart Builder")
 # ---------------- Data ----------------
 @st.cache_data
 def load_data() -> pd.DataFrame:
-    df = pd.read_parquet("data/latest.parquet")
-    df["MarketYear"] = df["MarketYear"].astype(int)
-    # Ensure consistent string columns (prevents weird legend/title issues)
-    for c in ["CommodityDescription", "CountryName", "AttributeDescription", "UnitDescription"]:
-        df[c] = df[c].astype(str).str.strip()
-    return df
+    """Load and preprocess USDA data from parquet file."""
+    try:
+        df = pd.read_parquet("data/latest.parquet")
+        df["MarketYear"] = df["MarketYear"].astype(int)
+        # Ensure consistent string columns (prevents weird legend/title issues)
+        for c in ["CommodityDescription", "CountryName", "AttributeDescription", "UnitDescription"]:
+            df[c] = df[c].astype(str).str.strip()
+        return df
+    except FileNotFoundError:
+        st.error("Data file not found. Please run main.py to generate data/latest.parquet")
+        st.stop()
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        st.stop()
 
 df = load_data()
 
-def default_multi(options, preferred, fallback_n=3):
+def default_multi(options: list, preferred: list, fallback_n: int = 3) -> list:
+    """
+    Get default multi-select values from preferred list, or fallback to first N.
+    
+    :param options: Available options
+    :param preferred: Preferred options to select
+    :param fallback_n: Number of options to select if preferred not found
+    :return: List of selected options
+    """
     picked = [x for x in preferred if x in options]
     if picked:
         return picked
