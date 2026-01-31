@@ -1,0 +1,9 @@
+{
+  "latest_path": "data\\latest.parquet",
+  "latest_size": 852039,
+  "latest_mtime": 1769666753.2535996,
+  "marts_built": [
+    "mart_balance_sheet_qty.parquet",
+    "mart_map.parquet"
+  ]
+}

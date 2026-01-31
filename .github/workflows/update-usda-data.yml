@@ -35,7 +35,7 @@ jobs:
       - name: Check for changes
         id: changed
         run: |
-          if [ -n "$(git status --porcelain data/latest.parquet)" ]; then
+          if [ -n "$(git status --porcelain data/)" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
           else
             echo "changed=false" >> $GITHUB_OUTPUT
@@ -46,10 +46,13 @@ jobs:
         run: |
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
-          git add data/latest.parquet
+          git add data/latest.parquet data/release_index.parquet \
+            data/marts/mart_balance_sheet_qty.parquet data/marts/mart_map.parquet \
+            data/marts/_meta.json data/update_info.json
           git commit -m "Auto-update USDA data"
           git push
 
       - name: No changes detected
         if: steps.changed.outputs.changed == 'false'
-        run: echo "No changes in data/latest.parquet."
+        run: echo "No changes in data/."
+

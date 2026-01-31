@@ -1,3 +1,4 @@
+"""Country and product balance sheets: production, exports, imports, ending stocks, total use by market year."""
 import pandas as pd
 import streamlit as st
 import plotly.express as px
@@ -5,40 +6,51 @@ import plotly.express as px
 st.set_page_config(layout="wide")
 st.title("Country Balance Sheet")
 
+# =========================
+# Load marts
+# =========================
 @st.cache_data
-def load_data() -> pd.DataFrame:
-    """Load and preprocess USDA data."""
+def load_balance_mart() -> pd.DataFrame:
+    """
+    Load the balance sheet mart (1000 MT only, annual aggregated).
+    """
     try:
-        df = pd.read_parquet("data/latest.parquet")
-        # Ensure string columns are properly typed and stripped
-        df["CommodityDescription"] = df["CommodityDescription"].astype(str).str.strip()
-        df["UnitDescription"] = df["UnitDescription"].astype(str).str.strip()
-        df["ProductType"] = df["CommodityDescription"].str.split(",").str[0].str.strip()
-        df["MarketYear"] = df["MarketYear"].astype(int)
+        df = pd.read_parquet("data/marts/mart_balance_sheet_qty.parquet")
+
+        # Minimal type safety
+        for c in ["commodityName", "countryName", "attributeName", "unit_clean", "unitDescription"]:
+            if c in df.columns:
+                df[c] = df[c].astype("string").str.strip()
+
+        if "marketYear" in df.columns:
+            df["marketYear"] = pd.to_numeric(df["marketYear"], errors="coerce").astype("Int64")
+
+        if "value" in df.columns:
+            df["value"] = pd.to_numeric(df["value"], errors="coerce").astype("float64")
+
+        # ProductType (same idea as your old split)
+        df["ProductType"] = df["commodityName"].astype("string").str.split(",").str[0].str.strip()
+
         return df
+
     except FileNotFoundError:
-        st.error("Data file not found. Please run main.py to generate data/latest.parquet")
+        st.error("Mart file not found. Please run your update pipeline to generate data/marts/mart_balance_sheet_qty.parquet")
         st.stop()
     except Exception as e:
-        st.error(f"Error loading data: {e}")
+        st.error(f"Error loading balance mart: {e}")
         st.stop()
 
-def top_n_with_others(df_in: pd.DataFrame, name_col: str = "CountryName",
-                      value_col: str = "Value", n: int = 10,
-                      others_label: str = "Others") -> pd.DataFrame:
-    """
-    Get top N items by value, grouping the rest as 'Others'.
-    
-    :param df_in: Input DataFrame
-    :param name_col: Column name for grouping
-    :param value_col: Column name for values to sum
-    :param n: Number of top items to keep
-    :param others_label: Label for the 'Others' group
-    :return: DataFrame with top N items plus Others
-    """
+
+def top_n_with_others(
+    df_in: pd.DataFrame,
+    name_col: str = "countryName",
+    value_col: str = "value",
+    n: int = 10,
+    others_label: str = "Others",
+) -> pd.DataFrame:
     if df_in.empty:
         return df_in
-    
+
     df2 = df_in.groupby(name_col, as_index=False)[value_col].sum()
     df2 = df2.sort_values(value_col, ascending=False)
 
@@ -48,37 +60,35 @@ def top_n_with_others(df_in: pd.DataFrame, name_col: str = "CountryName",
     if others_sum > 0:
         top = pd.concat(
             [top, pd.DataFrame({name_col: [others_label], value_col: [others_sum]})],
-            ignore_index=True
+            ignore_index=True,
         )
     return top
 
-df = load_data()
-
-# ---------------- Filters ----------------
-c1, c2, c3 = st.columns(3)
 
 def default_index(options: list, preferred: str) -> int:
-    """
-    Get index of preferred option, or 0 if not found.
-    
-    :param options: List of options
-    :param preferred: Preferred option value
-    :return: Index of preferred option or 0
-    """
     try:
         return options.index(preferred)
     except ValueError:
         return 0
 
-country_options = sorted(df["CountryName"].unique())
-ptype_options = sorted(df["ProductType"].unique())
+
+# =========================
+# Load data
+# =========================
+df = load_balance_mart()
+
+# ---------------- Filters ----------------
+c1, c2, c3 = st.columns(3)
+
+country_options = sorted(df["countryName"].dropna().unique().tolist())
+ptype_options = sorted(df["ProductType"].dropna().unique().tolist())
 
 with c1:
     country = st.selectbox(
         "Country",
         country_options,
         index=default_index(country_options, "Russia"),
-        key="f_country"
+        key="f_country",
     )
 
 with c2:
@@ -86,16 +96,16 @@ with c2:
         "Product type",
         ptype_options,
         index=default_index(ptype_options, "Oil"),
-        key="f_ptype"
+        key="f_ptype",
     )
 
 with c3:
-    product_options = sorted(df.loc[df["ProductType"] == ptype, "CommodityDescription"].unique())
+    product_options = sorted(df.loc[df["ProductType"] == ptype, "commodityName"].dropna().unique().tolist())
     product = st.selectbox(
         "Product",
         product_options,
         index=default_index(product_options, "Oil, Sunflowerseed"),
-        key="f_product"
+        key="f_product",
     )
 
 ROW_ORDER = [
@@ -105,30 +115,33 @@ ROW_ORDER = [
     "Total Supply",
     "Exports",
     "Domestic Consumption",
-    "Total Use",              # <-- custom row
+    "Total Use",
     "Ending Stocks",
-    "Total Distribution",     # <-- optional balance identity
+    "Total Distribution",
     "Stock-to-Use (%)",
 ]
 
-# ---------------- Filtered data for BALANCE TABLE (selected country) ----------------  
+# ---------------- Filtered data for BALANCE TABLE (selected country) ----------------
 mask = (
-    (df["CountryName"] == country) &
-    (df["ProductType"] == ptype) &
-    (df["CommodityDescription"] == product) &
-    (df["UnitDescription"].str.contains(r"1000\s*MT", case=False, na=False))
+    (df["countryName"] == country)
+    & (df["ProductType"] == ptype)
+    & (df["commodityName"] == product)
+    & (df["unit_clean"] == "1000 MT")  # mart already should be 1000 MT, but keep as safety
 )
+
 dff = df.loc[mask].copy()
 
 if dff.empty:
-    st.warning("No data found for this selection with UnitDescription containing '1000 MT'.")
+    st.warning("No data found for this selection.")
     st.stop()
 
 # ---------------- Pivot: Attribute x MarketYear ----------------
 table = (
-    dff.groupby(["AttributeDescription", "MarketYear"], as_index=False)["Value"].sum()
-       .pivot(index="AttributeDescription", columns="MarketYear", values="Value")
+    dff.groupby(["attributeName", "marketYear"], as_index=False)["value"]
+       .sum()
+       .pivot(index="attributeName", columns="marketYear", values="value")
 )
+table.index.name = None
 
 # --- Create Domestic Consumption if not present ---
 if "Domestic Consumption" not in table.index:
@@ -140,19 +153,17 @@ if "Domestic Consumption" not in table.index:
         if parts:
             table.loc["Domestic Consumption"] = table.loc[parts].sum(axis=0)
 
-# --- Create Total Use (custom) ---
-# Prefer USDA's "Total Use" if present; otherwise Domestic Consumption + Exports
+# --- Create Total Use ---
 if "Total Use" not in table.index:
     if ("Domestic Consumption" in table.index) and ("Exports" in table.index):
         table.loc["Total Use"] = table.loc["Domestic Consumption"] + table.loc["Exports"]
 
-# --- Create Total Distribution (balance identity) ---
-# Common identity: Total Distribution = Total Use + Ending Stocks
+# --- Create Total Distribution ---
 if "Total Distribution" not in table.index:
     if ("Total Use" in table.index) and ("Ending Stocks" in table.index):
         table.loc["Total Distribution"] = table.loc["Total Use"] + table.loc["Ending Stocks"]
 
-# --- Create Stock-to-Use (%) = Ending Stocks / Total Use * 100 ---
+# --- Create Stock-to-Use (%) ---
 if "Stock-to-Use (%)" not in table.index:
     if ("Ending Stocks" in table.index) and ("Total Use" in table.index):
         denom = table.loc["Total Use"].replace(0, pd.NA)
@@ -162,80 +173,82 @@ if "Stock-to-Use (%)" not in table.index:
 qty_rows = [r for r in ROW_ORDER if r != "Stock-to-Use (%)"]
 table.loc[table.index.intersection(qty_rows)] = table.loc[table.index.intersection(qty_rows)].fillna(0)
 
-# Sort years & keep only your rows in your order
+# Sort years & keep only your rows in your order (but don’t crash if some rows missing)
 table = table.reindex(sorted(table.columns), axis=1)
-table = table.reindex(ROW_ORDER)
+ordered_present = [r for r in ROW_ORDER if r in table.index]
+table = table.reindex(ordered_present)
 
 st.subheader(f"{product} — {country}")
 
-# Format: quantities vs %
-styled = table.style.format(lambda v: f"{v:,.0f}")
+# ✅ Old style: Streamlit dataframe with pandas Styler formatting
+styled = table.style.format(lambda v: "" if pd.isna(v) else f"{v:,.0f}")
 if "Stock-to-Use (%)" in table.index:
-    styled = styled.format(lambda v: "" if pd.isna(v) else f"{v:.1f}%", subset=pd.IndexSlice[["Stock-to-Use (%)"], :])
+    styled = styled.format(
+        lambda v: "" if pd.isna(v) else f"{v:.1f}%",
+        subset=pd.IndexSlice[["Stock-to-Use (%)"], :],
+    )
 
 st.dataframe(styled, use_container_width=True)
 
-with st.expander("Show available attributes for this selection"):
-    st.write(sorted(dff["AttributeDescription"].unique()))
-
 # ===================== RANKING CHARTS (across ALL countries) =====================
-st.markdown("## Top Countries")
+st.markdown("## Top Countries by Measure")
 
 # Controls
 cA, cB = st.columns([2, 3])
 
 with cA:
-    year_options = sorted(df["MarketYear"].unique())
+    year_options = sorted(df["marketYear"].dropna().unique().tolist())
     year = st.selectbox("Market Year", year_options, index=len(year_options) - 1, key="top_year")
 
 with cB:
-    top_n = st.slider("Top N", 5, 40, 10, key="top_n")
+    top_n_options = list(range(5, 41, 5))  # 5,10,15,...,40
+    top_n = st.selectbox(
+        "Top N",
+        top_n_options,
+        index=top_n_options.index(10),
+        key="top_n",
+    )
 
 # Base slice for rankings (all countries, same product/year/unit)
 rank_base = df[
-    (df["ProductType"] == ptype) &
-    (df["CommodityDescription"] == product) &
-    (df["MarketYear"] == year) &
-    (df["UnitDescription"].str.contains(r"1000\s*MT", case=False, na=False))
+    (df["ProductType"] == ptype)
+    & (df["commodityName"] == product)
+    & (df["marketYear"] == year)
+    & (df["unit_clean"] == "1000 MT")
 ].copy()
 
 # Add a synthetic "Domestic Consumption" series if needed
-if "Domestic Consumption" not in set(rank_base["AttributeDescription"].unique()):
-    if "Total Dom. Cons." in set(rank_base["AttributeDescription"].unique()):
-        tmp = rank_base[rank_base["AttributeDescription"] == "Total Dom. Cons."].copy()
-        tmp["AttributeDescription"] = "Domestic Consumption"
+if "Domestic Consumption" not in set(rank_base["attributeName"].dropna().unique()):
+    if "Total Dom. Cons." in set(rank_base["attributeName"].dropna().unique()):
+        tmp = rank_base[rank_base["attributeName"] == "Total Dom. Cons."].copy()
+        tmp["attributeName"] = "Domestic Consumption"
         rank_base = pd.concat([rank_base, tmp], ignore_index=True)
     else:
         parts = [a for a in ["Food Use Dom. Cons.", "Industrial Dom. Cons.", "Feed Waste Dom. Cons.", "Feed Dom. Cons."]
-                 if a in set(rank_base["AttributeDescription"].unique())]
+                 if a in set(rank_base["attributeName"].dropna().unique())]
         if parts:
-            tmp = (rank_base[rank_base["AttributeDescription"].isin(parts)]
-                   .groupby(["CountryName"], as_index=False)["Value"].sum())
-            tmp["AttributeDescription"] = "Domestic Consumption"
+            tmp = (rank_base[rank_base["attributeName"].isin(parts)]
+                   .groupby(["countryName"], as_index=False)["value"].sum())
+            tmp["attributeName"] = "Domestic Consumption"
+            tmp["marketYear"] = year
+            tmp["commodityName"] = product
+            tmp["ProductType"] = ptype
+            tmp["unit_clean"] = "1000 MT"
             rank_base = pd.concat([rank_base, tmp], ignore_index=True)
 
 def get_top(attribute_name: str) -> pd.DataFrame:
-    """
-    Get top countries for a specific attribute.
-    
-    :param attribute_name: Name of the attribute to rank by
-    :return: DataFrame with top N countries plus Others
-    """
-    tmp = rank_base[rank_base["AttributeDescription"] == attribute_name]
-    out = tmp.groupby("CountryName", as_index=False)["Value"].sum()
+    tmp = rank_base[
+        (rank_base["attributeName"] == attribute_name)
+        & (rank_base["countryName"].astype("string").str.upper() != "WORLD")
+        ]
+    out = tmp.groupby("countryName", as_index=False)["value"].sum()
     return top_n_with_others(out, n=top_n)
 
 def draw_bar(df_top: pd.DataFrame, title: str) -> None:
-    """
-    Draw a bar chart from the top countries DataFrame.
-    
-    :param df_top: DataFrame with CountryName and Value columns
-    :param title: Chart title
-    """
     if df_top.empty:
         st.info(f"No data for {title}.")
         return
-    fig = px.bar(df_top, x="CountryName", y="Value", title=title)
+    fig = px.bar(df_top, x="countryName", y="value", title=title)
     fig.update_yaxes(title="Value (1000 MT)")
     fig.update_xaxes(title="")
     st.plotly_chart(fig, use_container_width=True)
