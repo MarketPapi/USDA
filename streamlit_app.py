@@ -19,3 +19,15 @@ for page_path, label, description in PAGES:
     st.page_link(page_path, label=f"**{label}**")
     st.caption(description)
     st.write("")
+
+st.divider()
+st.subheader("Data source & methodology")
+st.markdown(
+    "Data in this dashboard comes from the **USDA Foreign Agricultural Service (FAS)** "
+    "[Production, Supply and Distribution (PSD)](https://fas.usda.gov/data/production-supply-and-distribution) "
+    "database, accessed via the **FAS PSD API**."
+)
+st.markdown(
+    "**Update frequency:** Data is refreshed **weekly** (every Sunday at 00:00 UTC) by an automated pipeline. "
+    "For the exact last update time and pipeline status, see the **Data Status** page."
+)
