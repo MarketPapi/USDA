@@ -2,7 +2,7 @@
 import streamlit as st
 
 st.set_page_config(layout="wide", page_title="USDA Dashboard")
-st.title("USDA Dashboard")
+st.title(" Aston USDA Dashboard")
 st.markdown("Explore PSD data with the pages below. You can also use the **sidebar** to switch pages.")
 
 st.divider()
