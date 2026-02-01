@@ -24,7 +24,7 @@ st.divider()
 st.subheader("Data source & methodology")
 st.markdown(
     "Data in this dashboard comes from the **USDA Foreign Agricultural Service (FAS)** "
-    "[Production, Supply and Distribution (PSD)](https://fas.usda.gov/data/production-supply-and-distribution) "
+    "[Production, Supply and Distribution (PSD)](https://apps.fas.usda.gov/psdonline/app/index.html#/app/home) "
     "database, accessed via the **FAS PSD API**."
 )
 st.markdown(
