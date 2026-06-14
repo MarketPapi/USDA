@@ -1,10 +1,10 @@
 {
   "latest_path": "data/latest.parquet",
-  "latest_size": 927606,
-  "latest_mtime": 1780798309.2511814,
+  "latest_size": 932687,
+  "latest_mtime": 1781404081.5271082,
   "marts_built": [
     "mart_balance_sheet_qty.parquet",
     "mart_map.parquet"
   ],
-  "built_at": "2026-06-07T02:12:36.535151Z"
+  "built_at": "2026-06-14T02:28:05.387292Z"
 }
