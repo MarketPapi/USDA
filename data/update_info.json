@@ -1,8 +1,8 @@
 {
-  "last_updated": "2026-07-05T01:50:00.454457Z",
-  "status": "no_refresh",
+  "last_updated": "2026-07-12T01:25:51.627165Z",
+  "status": "ok",
   "rows_in_latest": 438799,
-  "pairs_refreshed": 0,
+  "pairs_refreshed": 103,
   "failed_pairs_count": 0,
   "message": null
 }
